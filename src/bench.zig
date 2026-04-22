@@ -23,6 +23,9 @@ pub fn main(init: std.process.Init) !void {
     try benchVectorCase(16, 8, allocator, io);
     try benchVectorCase(24, 12, allocator, io);
     try benchVectorCase(32, 16, allocator, io);
+
+    std.debug.print("[vector 3D]\n", .{});
+    benchCross3(io);
 }
 
 fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
@@ -122,6 +125,26 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         std.mem.doNotOptimizeAway(sink);
         std.mem.doNotOptimizeAway(state);
         printResult("vec_mul", iters, elapsedNs(io, start_ns));
+    }
+
+    {
+        const iters = scaledIters(90_000_000, n, 100, 250_000);
+        var sink: T = 0;
+        var lhs = rhs_base;
+        var rhs = makeVectorData(n, 17);
+        var state: u64 = 0x1f83_d9ab_fb41_bd6b +% n;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            lhs[0] = rhs_base[0] + nextPerturb(&state);
+            rhs[0] += nextPerturb(&state);
+            sink += zla.vec_dot(lhs, rhs);
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("vec_dot", iters, elapsedNs(io, start_ns));
     }
 
     {
@@ -265,6 +288,26 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
     }
 
     {
+        const iters = scaledIters(90_000_000, cols, 100, 250_000);
+        var sink: T = 0;
+        var lhs = vec_base;
+        var rhs = makeVectorData(cols, 23);
+        var state: u64 = 0x5be0_cd19_137e_2179 +% rows +% cols;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            lhs[0] = vec_base[0] + nextPerturb(&state);
+            rhs[0] += nextPerturb(&state);
+            sink += zla.vec_dot(lhs, rhs);
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("vec_dot", iters, elapsedNs(io, start_ns));
+    }
+
+    {
         const iters = scaledIters(70_000_000, rows * cols, 100, 200_000);
         var sink: T = 0;
         var state: u64 = 0x3f84_d5b5_b547_0917 +% rows +% cols;
@@ -284,6 +327,28 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
         printResult("mat_mul (Nx1)", iters, elapsedNs(io, start_ns));
     }
 
+    std.debug.print("\n", .{});
+}
+
+fn benchCross3(io: Io) void {
+    const iters = 250_000;
+    var sink: T = 0;
+    var a = @Vector(3, T){ 1, 2, 3 };
+    var b = @Vector(3, T){ 4, 5, 6 };
+    var state: u64 = 0x9b05_688c_2b3e_6c1f;
+
+    var i: usize = 0;
+    const start_ns = nowNs(io);
+    while (i < iters) : (i += 1) {
+        a[0] += nextPerturb(&state);
+        b[1] += nextPerturb(&state);
+        const c = zla.vec_cross(a, b);
+        sink += c[2];
+    }
+
+    std.mem.doNotOptimizeAway(sink);
+    std.mem.doNotOptimizeAway(state);
+    printResult("vec_cross", iters, elapsedNs(io, start_ns));
     std.debug.print("\n", .{});
 }
 

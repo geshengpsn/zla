@@ -1,6 +1,43 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 
+fn vectorChild(comptime Vec: type) type {
+    return switch (@typeInfo(Vec)) {
+        .vector => |info| info.child,
+        else => @compileError("Expected a SIMD vector type"),
+    };
+}
+
+fn vectorLen(comptime Vec: type) usize {
+    return switch (@typeInfo(Vec)) {
+        .vector => |info| info.len,
+        else => @compileError("Expected a SIMD vector type"),
+    };
+}
+
+pub fn vec_dot(a: anytype, b: @TypeOf(a)) vectorChild(@TypeOf(a)) {
+    comptime {
+        _ = vectorLen(@TypeOf(a));
+    }
+    return @reduce(.Add, a * b);
+}
+
+pub fn vec_cross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
+    const Vec = @TypeOf(a);
+
+    comptime {
+        if (vectorLen(Vec) != 3) {
+            @compileError("vec_cross expects @Vector(3, T) inputs");
+        }
+    }
+
+    return @as(Vec, .{
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    });
+}
+
 pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
     return struct {
         data: [cols]@Vector(rows, T),
@@ -356,6 +393,28 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             };
         }
     };
+}
+
+test "vec_dot" {
+    const a = @Vector(4, f64){ 1, 2, 3, 4 };
+    const b = @Vector(4, f64){ 5, 6, 7, 8 };
+    try std.testing.expectApproxEqAbs(70, vec_dot(a, b), 1e-12);
+}
+
+test "vec_cross" {
+    const x = @Vector(3, f64){ 1, 0, 0 };
+    const y = @Vector(3, f64){ 0, 1, 0 };
+    const z = vec_cross(x, y);
+    try std.testing.expectEqual(@Vector(3, f64){ 0, 0, 1 }, z);
+}
+
+test "vec_cross orthogonality" {
+    const a = @Vector(3, f64){ 2, -1, 3 };
+    const b = @Vector(3, f64){ -4, 5, 1 };
+    const c = vec_cross(a, b);
+
+    try std.testing.expectApproxEqAbs(0, vec_dot(c, a), 1e-12);
+    try std.testing.expectApproxEqAbs(0, vec_dot(c, b), 1e-12);
 }
 
 test "Mat init" {
