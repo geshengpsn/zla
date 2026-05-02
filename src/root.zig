@@ -15,6 +15,13 @@ fn vectorLen(comptime Vec: type) usize {
     };
 }
 
+fn assertFloat(comptime T: type, comptime message: []const u8) void {
+    switch (@typeInfo(T)) {
+        .float => {},
+        else => @compileError(message),
+    }
+}
+
 pub fn vec_dot(a: anytype, b: @TypeOf(a)) vectorChild(@TypeOf(a)) {
     comptime {
         _ = vectorLen(@TypeOf(a));
@@ -36,6 +43,113 @@ pub fn vec_cross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     });
+}
+
+pub fn Quaternion(comptime T: type) type {
+    return struct {
+        x: T,
+        y: T,
+        z: T,
+        w: T,
+
+        pub fn init(x: T, y: T, z: T, w: T) @This() {
+            return .{ .x = x, .y = y, .z = z, .w = w };
+        }
+
+        pub fn identity() @This() {
+            return .{ .x = 0, .y = 0, .z = 0, .w = 1 };
+        }
+
+        pub fn norm(self: @This()) T {
+            return std.math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w);
+        }
+
+        pub fn normalized(self: @This()) @This() {
+            const n = self.norm();
+            return .{
+                .x = self.x / n,
+                .y = self.y / n,
+                .z = self.z / n,
+                .w = self.w / n,
+            };
+        }
+
+        pub fn toMat3(self: @This()) Mat(T, 3, 3) {
+            comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
+
+            const q = self.normalized();
+            const two: T = 2;
+
+            const xx = q.x * q.x;
+            const yy = q.y * q.y;
+            const zz = q.z * q.z;
+            const xy = q.x * q.y;
+            const xz = q.x * q.z;
+            const yz = q.y * q.z;
+            const wx = q.w * q.x;
+            const wy = q.w * q.y;
+            const wz = q.w * q.z;
+
+            return Mat(T, 3, 3).init(.{
+                1 - two * (yy + zz), two * (xy - wz),     two * (xz + wy),
+                two * (xy + wz),     1 - two * (xx + zz), two * (yz - wx),
+                two * (xz - wy),     two * (yz + wx),     1 - two * (xx + yy),
+            });
+        }
+
+        pub fn fromMat3(matrix: *const Mat(T, 3, 3)) @This() {
+            comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
+
+            const m00 = matrix.data[0][0];
+            const m01 = matrix.data[1][0];
+            const m02 = matrix.data[2][0];
+            const m10 = matrix.data[0][1];
+            const m11 = matrix.data[1][1];
+            const m12 = matrix.data[2][1];
+            const m20 = matrix.data[0][2];
+            const m21 = matrix.data[1][2];
+            const m22 = matrix.data[2][2];
+
+            const trace = m00 + m11 + m22;
+            var q: @This() = undefined;
+
+            if (trace > 0) {
+                const s = std.math.sqrt(trace + 1) * 2;
+                q = .{
+                    .x = (m21 - m12) / s,
+                    .y = (m02 - m20) / s,
+                    .z = (m10 - m01) / s,
+                    .w = s / 4,
+                };
+            } else if (m00 > m11 and m00 > m22) {
+                const s = std.math.sqrt(1 + m00 - m11 - m22) * 2;
+                q = .{
+                    .x = s / 4,
+                    .y = (m01 + m10) / s,
+                    .z = (m02 + m20) / s,
+                    .w = (m21 - m12) / s,
+                };
+            } else if (m11 > m22) {
+                const s = std.math.sqrt(1 + m11 - m00 - m22) * 2;
+                q = .{
+                    .x = (m01 + m10) / s,
+                    .y = s / 4,
+                    .z = (m12 + m21) / s,
+                    .w = (m02 - m20) / s,
+                };
+            } else {
+                const s = std.math.sqrt(1 + m22 - m00 - m11) * 2;
+                q = .{
+                    .x = (m02 + m20) / s,
+                    .y = (m12 + m21) / s,
+                    .z = s / 4,
+                    .w = (m10 - m01) / s,
+                };
+            }
+
+            return q.normalized();
+        }
+    };
 }
 
 pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
@@ -415,6 +529,38 @@ test "vec_cross orthogonality" {
 
     try std.testing.expectApproxEqAbs(0, vec_dot(c, a), 1e-12);
     try std.testing.expectApproxEqAbs(0, vec_dot(c, b), 1e-12);
+}
+
+test "Quaternion toMat3 z rotation" {
+    const half_sqrt = std.math.sqrt(@as(f64, 0.5));
+    const q = Quaternion(f64).init(0, 0, half_sqrt, half_sqrt);
+    const m = q.toMat3();
+
+    try std.testing.expectApproxEqAbs(0, m.data[0][0], 1e-12);
+    try std.testing.expectApproxEqAbs(1, m.data[0][1], 1e-12);
+    try std.testing.expectApproxEqAbs(0, m.data[0][2], 1e-12);
+
+    try std.testing.expectApproxEqAbs(-1, m.data[1][0], 1e-12);
+    try std.testing.expectApproxEqAbs(0, m.data[1][1], 1e-12);
+    try std.testing.expectApproxEqAbs(0, m.data[1][2], 1e-12);
+
+    try std.testing.expectApproxEqAbs(0, m.data[2][0], 1e-12);
+    try std.testing.expectApproxEqAbs(0, m.data[2][1], 1e-12);
+    try std.testing.expectApproxEqAbs(1, m.data[2][2], 1e-12);
+}
+
+test "Quaternion fromMat3 round trip" {
+    const half_sqrt = std.math.sqrt(@as(f64, 0.5));
+    const original = Quaternion(f64).init(0.5, -0.5, 0.5, half_sqrt).normalized();
+    const matrix = original.toMat3();
+    const round_tripped = Quaternion(f64).fromMat3(&matrix);
+    const round_tripped_matrix = round_tripped.toMat3();
+
+    inline for (0..3) |col| {
+        inline for (0..3) |row| {
+            try std.testing.expectApproxEqAbs(matrix.data[col][row], round_tripped_matrix.data[col][row], 1e-12);
+        }
+    }
 }
 
 test "Mat init" {
