@@ -9,7 +9,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     std.debug.print("zla benchmark (element type: {s})\n", .{@typeName(T)});
-    std.debug.print("Square matrix suite covers all public APIs.\n", .{});
+    std.debug.print("Square matrix suite covers SIMD Mat public APIs.\n", .{});
     std.debug.print("Command: zig build bench\n\n", .{});
 
     try benchSquare(2, allocator, io);
@@ -23,6 +23,15 @@ pub fn main(init: std.process.Init) !void {
     try benchVectorCase(16, 8, allocator, io);
     try benchVectorCase(24, 12, allocator, io);
     try benchVectorCase(32, 16, allocator, io);
+
+    std.debug.print("\nLarge heap matrix suites\n", .{});
+    try benchLargeHeapMatrix(1000, allocator, io);
+    try benchLargeHeapMatrix(2000, allocator, io);
+    try benchLargeHeapMatrix(3000, allocator, io);
+    try benchLargeHeapMatrix(4000, allocator, io);
+
+    std.debug.print("\nQuaternion suite\n", .{});
+    benchQuaternion(io);
 
     std.debug.print("[vector 3D]\n", .{});
     benchCross3(io);
@@ -330,6 +339,137 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
     std.debug.print("\n", .{});
 }
 
+fn benchLargeHeapMatrix(n: usize, allocator: std.mem.Allocator, io: Io) !void {
+    const element_count = n * n;
+    const matrix = try allocator.alloc(T, element_count);
+    defer allocator.free(matrix);
+
+    const vector = try allocator.alloc(T, n);
+    defer allocator.free(vector);
+
+    const out = try allocator.alloc(T, n);
+    defer allocator.free(out);
+
+    std.debug.print("[large heap matrix n={d}]\n", .{n});
+
+    {
+        const iters = clampUsize(24_000_000 / element_count, 1, 8);
+        var sink: T = 0;
+        var state: u64 = 0x6a09_e667_f3bc_c909 +% n;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            sink += fillLargeMatrix(matrix, n, &state);
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("large fill", iters, elapsedNs(io, start_ns));
+    }
+
+    var fill_state: u64 = 0xbb67_ae85_84ca_a73b +% n;
+    _ = fillLargeMatrix(matrix, n, &fill_state);
+    fillLargeVector(vector);
+
+    {
+        const iters = clampUsize(8_000_000 / element_count, 1, 4);
+        var sink: T = 0;
+        var state: u64 = 0x3c6e_f372_fe94_f82a +% n;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            vector[0] = 1 + nextPerturb(&state);
+            sink += largeMatVec(matrix, vector, out, n);
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("large mat_vec", iters, elapsedNs(io, start_ns));
+    }
+
+    std.debug.print("\n", .{});
+}
+
+fn benchQuaternion(io: Io) void {
+    const Quat = zla.Quaternion(T);
+    const iters = 500_000;
+    var q = Quat.init(0.25, -0.5, 0.75, 1.0).normalized();
+    var matrix = q.toMat3();
+    var state: u64 = 0xd1b5_4a32_d192_ed03;
+
+    {
+        var sink: T = 0;
+        var q_dyn = q;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            q_dyn.x = q.x + nextPerturb(&state);
+            sink += q_dyn.norm();
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("quat norm", iters, elapsedNs(io, start_ns));
+    }
+
+    {
+        var sink: T = 0;
+        var q_dyn = q;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            q_dyn.y = q.y + nextPerturb(&state);
+            const out = q_dyn.normalized();
+            sink += out.w;
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("quat normalized", iters, elapsedNs(io, start_ns));
+    }
+
+    {
+        var sink: T = 0;
+        var q_dyn = q;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            q_dyn.z = q.z + nextPerturb(&state);
+            matrix = q_dyn.toMat3();
+            sink += matrix.data[0][0];
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("quat toMat3", iters, elapsedNs(io, start_ns));
+    }
+
+    {
+        var sink: T = 0;
+        var matrix_dyn = matrix;
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            q.w = q.w + nextPerturb(&state);
+            matrix_dyn = q.normalized().toMat3();
+            const out = Quat.fromMat3(&matrix_dyn);
+            sink += out.w;
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("quat fromMat3", iters, elapsedNs(io, start_ns));
+    }
+
+    std.debug.print("\n", .{});
+}
+
 fn benchCross3(io: Io) void {
     const iters = 250_000;
     var sink: T = 0;
@@ -381,6 +521,39 @@ fn nextPerturb(state: *u64) T {
     state.* = state.* *% 6364136223846793005 +% 1442695040888963407;
     const bits: u16 = @truncate(state.* >> 48);
     return @as(T, @floatFromInt(bits + 1)) * 1e-8;
+}
+
+fn fillLargeMatrix(matrix: []T, n: usize, state: *u64) T {
+    var sink: T = 0;
+    for (0..n) |row| {
+        const row_offset = row * n;
+        for (0..n) |col| {
+            const value = @as(T, @floatFromInt((row + col) % 17 + 1)) + nextPerturb(state);
+            matrix[row_offset + col] = value;
+            sink += value;
+        }
+    }
+    return sink;
+}
+
+fn fillLargeVector(vector: []T) void {
+    for (vector, 0..) |*value, idx| {
+        value.* = @as(T, @floatFromInt(idx % 13 + 1));
+    }
+}
+
+fn largeMatVec(matrix: []const T, vector: []const T, out: []T, n: usize) T {
+    var sink: T = 0;
+    for (0..n) |row| {
+        const row_offset = row * n;
+        var sum: T = 0;
+        for (0..n) |col| {
+            sum += matrix[row_offset + col] * vector[col];
+        }
+        out[row] = sum;
+        sink += sum;
+    }
+    return sink;
 }
 
 fn makeGeneralSquareData(comptime n: usize, comptime seed: usize) [n * n]T {

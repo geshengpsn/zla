@@ -184,6 +184,20 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
         }
 
+        pub fn transpose(self: *const @This()) Mat(T, cols, rows) {
+            var out: Mat(T, cols, rows) = .{
+                .data = undefined,
+            };
+            inline for (0..rows) |out_col| {
+                var col: [cols]T = undefined;
+                inline for (0..cols) |out_row| {
+                    col[out_row] = self.data[out_row][out_col];
+                }
+                out.data[out_col] = @as(@Vector(cols, T), col);
+            }
+            return out;
+        }
+
         pub fn mat_mul(a: *const @This(), b: anytype, c: anytype) void {
             comptime {
                 if (b.*.rows != a.cols) {
@@ -606,6 +620,18 @@ test "Mat mat_mul" {
         49, 64,
     });
     try std.testing.expectEqual(c, expected);
+}
+
+test "Mat transpose" {
+    const a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+
+    const transposed = a.transpose();
+
+    try std.testing.expectEqual(@Vector(3, f32){ 1, 2, 3 }, transposed.data[0]);
+    try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, transposed.data[1]);
 }
 
 test "Mat mat_inv" {
