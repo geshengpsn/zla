@@ -200,6 +200,26 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const iters = scaledIters(30_000_000, n * n * n, 8, 8_000);
         var sink: T = 0;
         var rhs = rhs_base;
+        var state: u64 = 0x4528_21e6_38d0_1377 +% n;
+        var x = @as(@Vector(n, T), @splat(0));
+
+        var i: usize = 0;
+        const start_ns = nowNs(io);
+        while (i < iters) : (i += 1) {
+            rhs[0] = rhs_base[0] + nextPerturb(&state);
+            try spd.solve_ldlt(&rhs, &x);
+            sink += x[0];
+        }
+
+        std.mem.doNotOptimizeAway(sink);
+        std.mem.doNotOptimizeAway(state);
+        printResult("solve_ldlt", iters, elapsedNs(io, start_ns));
+    }
+
+    {
+        const iters = scaledIters(30_000_000, n * n * n, 8, 8_000);
+        var sink: T = 0;
+        var rhs = rhs_base;
         var state: u64 = 0x082e_fa98_ec4e_6c89 +% n;
         var x = @as(@Vector(n, T), @splat(0));
 

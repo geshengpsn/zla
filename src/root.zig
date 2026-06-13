@@ -198,6 +198,87 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return out;
         }
 
+        pub fn get(self: *const @This(), row: usize, col: usize) T {
+            const col_data = @as([rows]T, self.data[col]);
+            return col_data[row];
+        }
+
+        pub fn set(self: *@This(), row: usize, col: usize, value: T) void {
+            var col_data = @as([rows]T, self.data[col]);
+            col_data[row] = value;
+            self.data[col] = @as(@Vector(rows, T), col_data);
+        }
+
+        pub fn get_row(self: *const @This(), row: usize) @Vector(cols, T) {
+            var row_data: [cols]T = undefined;
+            inline for (0..cols) |col| {
+                const col_data = @as([rows]T, self.data[col]);
+                row_data[col] = col_data[row];
+            }
+            return @as(@Vector(cols, T), row_data);
+        }
+
+        pub fn set_row(self: *@This(), row: usize, value: @Vector(cols, T)) void {
+            const row_data = @as([cols]T, value);
+            inline for (0..cols) |col| {
+                var col_data = @as([rows]T, self.data[col]);
+                col_data[row] = row_data[col];
+                self.data[col] = @as(@Vector(rows, T), col_data);
+            }
+        }
+
+        pub fn get_col(self: *const @This(), col: usize) @Vector(rows, T) {
+            return self.data[col];
+        }
+
+        pub fn set_col(self: *@This(), col: usize, value: @Vector(rows, T)) void {
+            self.data[col] = value;
+        }
+
+        pub fn get_block(
+            self: *const @This(),
+            comptime block_rows: usize,
+            comptime block_cols: usize,
+            start_row: usize,
+            start_col: usize,
+        ) Mat(T, block_rows, block_cols) {
+            comptime {
+                if (block_rows > rows or block_cols > cols) {
+                    @compileError("Block dimensions exceed matrix dimensions");
+                }
+            }
+
+            var out: Mat(T, block_rows, block_cols) = .{
+                .data = undefined,
+            };
+            inline for (0..block_cols) |block_col| {
+                var col_data: [block_rows]T = undefined;
+                inline for (0..block_rows) |block_row| {
+                    col_data[block_row] = self.get(start_row + block_row, start_col + block_col);
+                }
+                out.data[block_col] = @as(@Vector(block_rows, T), col_data);
+            }
+            return out;
+        }
+
+        pub fn set_block(self: *@This(), start_row: usize, start_col: usize, block: anytype) void {
+            comptime {
+                if (block.*.rows > rows or block.*.cols > cols) {
+                    @compileError("Block dimensions exceed matrix dimensions");
+                }
+            }
+
+            inline for (0..block.*.cols) |block_col| {
+                inline for (0..block.*.rows) |block_row| {
+                    self.set(
+                        start_row + block_row,
+                        start_col + block_col,
+                        block.*.data[block_col][block_row],
+                    );
+                }
+            }
+        }
+
         pub fn mat_mul(a: *const @This(), b: anytype, c: anytype) void {
             comptime {
                 if (b.*.rows != a.cols) {
@@ -346,6 +427,78 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
 
             x.* = result;
+        }
+
+        pub fn solve_ldlt(a: *const @This(), b: *const @Vector(rows, T), x: *@Vector(rows, T)) !void {
+            comptime {
+                if (rows != cols) {
+                    @compileError("LDLT solve requires square matrices");
+                }
+                switch (@typeInfo(T)) {
+                    .float => {},
+                    else => @compileError("LDLT solve requires floating point element types"),
+                }
+            }
+
+            var matrix: [rows][cols]T = undefined;
+            inline for (0..rows) |row| {
+                inline for (0..cols) |col| {
+                    matrix[row][col] = a.data[col][row];
+                }
+            }
+            var l = std.mem.zeroes([rows][cols]T);
+            var d = [_]T{0} ** rows;
+
+            const eps = std.math.floatEps(T) * @as(T, 16);
+
+            for (0..rows) |col| {
+                var diag = matrix[col][col];
+                for (0..col) |idx| {
+                    diag -= l[col][idx] * l[col][idx] * d[idx];
+                }
+
+                if (abs_value(diag) <= eps) {
+                    return error.SingularMatrix;
+                }
+
+                d[col] = diag;
+                l[col][col] = @as(T, 1);
+
+                for (col + 1..rows) |row| {
+                    var value = matrix[row][col];
+                    for (0..col) |idx| {
+                        value -= l[row][idx] * d[idx] * l[col][idx];
+                    }
+                    l[row][col] = value / diag;
+                }
+            }
+
+            const rhs = @as([rows]T, b.*);
+            var y = [_]T{0} ** rows;
+            for (0..rows) |row| {
+                var value = rhs[row];
+                for (0..row) |col| {
+                    value -= l[row][col] * y[col];
+                }
+                y[row] = value;
+            }
+
+            var z = [_]T{0} ** rows;
+            for (0..rows) |row| {
+                z[row] = y[row] / d[row];
+            }
+
+            var result = [_]T{0} ** rows;
+            for (0..rows) |idx| {
+                const row = rows - 1 - idx;
+                var value = z[row];
+                for (row + 1..rows) |col| {
+                    value -= l[col][row] * result[col];
+                }
+                result[row] = value;
+            }
+
+            x.* = @as(@Vector(rows, T), result);
         }
 
         pub fn solve_cholesky(a: *const @This(), b: *const @Vector(rows, T), x: *@Vector(rows, T)) !void {
@@ -634,6 +787,71 @@ test "Mat transpose" {
     try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, transposed.data[1]);
 }
 
+test "Mat get and set element" {
+    var a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+
+    try std.testing.expectEqual(@as(f32, 5), a.get(1, 1));
+
+    a.set(0, 2, 9);
+    try std.testing.expectEqual(@as(f32, 9), a.get(0, 2));
+    try std.testing.expectEqual(@Vector(2, f32){ 9, 6 }, a.data[2]);
+}
+
+test "Mat get and set row" {
+    var a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+
+    try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, a.get_row(1));
+
+    a.set_row(0, @Vector(3, f32){ 7, 8, 9 });
+    try std.testing.expectEqual(@Vector(3, f32){ 7, 8, 9 }, a.get_row(0));
+    try std.testing.expectEqual(@Vector(2, f32){ 7, 4 }, a.data[0]);
+}
+
+test "Mat get and set col" {
+    var a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+
+    try std.testing.expectEqual(@Vector(2, f32){ 2, 5 }, a.get_col(1));
+
+    a.set_col(1, @Vector(2, f32){ 8, 9 });
+    try std.testing.expectEqual(@Vector(2, f32){ 8, 9 }, a.get_col(1));
+    try std.testing.expectEqual(@as(f32, 8), a.get(0, 1));
+}
+
+test "Mat get and set block" {
+    var a = Mat(f32, 3, 4).init(.{
+        1, 2,  3,  4,
+        5, 6,  7,  8,
+        9, 10, 11, 12,
+    });
+
+    const block = a.get_block(2, 2, 1, 1);
+    const expected = Mat(f32, 2, 2).init(.{
+        6,  7,
+        10, 11,
+    });
+    try std.testing.expectEqual(expected, block);
+
+    const replacement = Mat(f32, 2, 2).init(.{
+        20, 21,
+        22, 23,
+    });
+    a.set_block(0, 2, &replacement);
+
+    try std.testing.expectEqual(@as(f32, 20), a.get(0, 2));
+    try std.testing.expectEqual(@as(f32, 21), a.get(0, 3));
+    try std.testing.expectEqual(@as(f32, 22), a.get(1, 2));
+    try std.testing.expectEqual(@as(f32, 23), a.get(1, 3));
+}
+
 test "Mat mat_inv" {
     const a = Mat(f64, 2, 2).init(.{
         4, 7,
@@ -711,6 +929,50 @@ test "Mat solve_lu singular" {
 
     var x = @as(@Vector(2, f64), @splat(0));
     try std.testing.expectError(error.SingularMatrix, a.solve_lu(&b, &x));
+}
+
+test "Mat solve_ldlt" {
+    const a = Mat(f64, 3, 3).init(.{
+        4, 1, 1,
+        1, 3, 0,
+        1, 0, 2,
+    });
+    const b = @Vector(3, f64){ 9, 7, 7 };
+
+    var x = @as(@Vector(3, f64), @splat(0));
+    try a.solve_ldlt(&b, &x);
+
+    const expected = @Vector(3, f64){ 1, 2, 3 };
+    inline for (0..3) |i| {
+        try std.testing.expectApproxEqAbs(expected[i], x[i], 1e-10);
+    }
+}
+
+test "Mat solve_ldlt indefinite" {
+    const a = Mat(f64, 2, 2).init(.{
+        1, 2,
+        2, -3,
+    });
+    const b = @Vector(2, f64){ 5, -4 };
+
+    var x = @as(@Vector(2, f64), @splat(0));
+    try a.solve_ldlt(&b, &x);
+
+    const expected = @Vector(2, f64){ 1, 2 };
+    inline for (0..2) |i| {
+        try std.testing.expectApproxEqAbs(expected[i], x[i], 1e-10);
+    }
+}
+
+test "Mat solve_ldlt singular" {
+    const a = Mat(f64, 2, 2).init(.{
+        0, 0,
+        0, 1,
+    });
+    const b = @Vector(2, f64){ 1, 1 };
+
+    var x = @as(@Vector(2, f64), @splat(0));
+    try std.testing.expectError(error.SingularMatrix, a.solve_ldlt(&b, &x));
 }
 
 test "Mat solve_cholesky" {
