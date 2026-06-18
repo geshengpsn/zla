@@ -279,6 +279,18 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
         }
 
+        pub fn mat_add(a: *const @This(), b: *const @This(), c: *@This()) void {
+            inline for (0..cols) |col| {
+                c.data[col] = a.data[col] + b.data[col];
+            }
+        }
+
+        pub fn mat_add_assign(a: *@This(), b: *const @This()) void {
+            inline for (0..cols) |col| {
+                a.data[col] += b.data[col];
+            }
+        }
+
         pub fn mat_mul(a: *const @This(), b: anytype, c: anytype) void {
             comptime {
                 if (b.*.rows != a.cols) {
@@ -773,6 +785,45 @@ test "Mat mat_mul" {
         49, 64,
     });
     try std.testing.expectEqual(c, expected);
+}
+
+test "Mat mat_add" {
+    const a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+    const b = Mat(f32, 2, 3).init(.{
+        6, 5, 4,
+        3, 2, 1,
+    });
+
+    var c = Mat(f32, 2, 3).init(.{ 0, 0, 0, 0, 0, 0 });
+    a.mat_add(&b, &c);
+
+    const expected = Mat(f32, 2, 3).init(.{
+        7, 7, 7,
+        7, 7, 7,
+    });
+    try std.testing.expectEqual(expected, c);
+}
+
+test "Mat mat_add_assign" {
+    var a = Mat(f32, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+    const b = Mat(f32, 2, 3).init(.{
+        6, 5, 4,
+        3, 2, 1,
+    });
+
+    a.mat_add_assign(&b);
+
+    const expected = Mat(f32, 2, 3).init(.{
+        7, 7, 7,
+        7, 7, 7,
+    });
+    try std.testing.expectEqual(expected, a);
 }
 
 test "Mat transpose" {
