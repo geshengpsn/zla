@@ -291,6 +291,18 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
         }
 
+        pub fn mat_neg(a: *const @This(), out: *@This()) void {
+            inline for (0..cols) |col| {
+                out.data[col] = -a.data[col];
+            }
+        }
+
+        pub fn mat_neg_assign(a: *@This()) void {
+            inline for (0..cols) |col| {
+                a.data[col] = -a.data[col];
+            }
+        }
+
         pub fn mat_mul(a: *const @This(), b: anytype, c: anytype) void {
             comptime {
                 if (b.*.rows != a.cols) {
@@ -822,6 +834,37 @@ test "Mat mat_add_assign" {
     const expected = Mat(f32, 2, 3).init(.{
         7, 7, 7,
         7, 7, 7,
+    });
+    try std.testing.expectEqual(expected, a);
+}
+
+test "Mat mat_neg" {
+    const a = Mat(f32, 2, 3).init(.{
+        1,  -2, 3,
+        -4, 5,  -6,
+    });
+
+    var out = Mat(f32, 2, 3).init(.{ 0, 0, 0, 0, 0, 0 });
+    a.mat_neg(&out);
+
+    const expected = Mat(f32, 2, 3).init(.{
+        -1, 2,  -3,
+        4,  -5, 6,
+    });
+    try std.testing.expectEqual(expected, out);
+}
+
+test "Mat mat_neg_assign" {
+    var a = Mat(f32, 2, 3).init(.{
+        1,  -2, 3,
+        -4, 5,  -6,
+    });
+
+    a.mat_neg_assign();
+
+    const expected = Mat(f32, 2, 3).init(.{
+        -1, 2,  -3,
+        4,  -5, 6,
     });
     try std.testing.expectEqual(expected, a);
 }
