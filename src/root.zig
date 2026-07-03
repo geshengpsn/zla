@@ -74,6 +74,32 @@ pub fn Quaternion(comptime T: type) type {
             };
         }
 
+        pub fn conjugate(self: @This()) @This() {
+            return .{
+                .x = -self.x,
+                .y = -self.y,
+                .z = -self.z,
+                .w = self.w,
+            };
+        }
+
+        pub fn conjugateAssign(self: *@This()) void {
+            self.* = self.conjugate();
+        }
+
+        pub fn mul(a: @This(), b: @This()) @This() {
+            return .{
+                .x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+                .y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+                .z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+                .w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+            };
+        }
+
+        pub fn mulAssign(self: *@This(), rhs: @This()) void {
+            self.* = self.mul(rhs);
+        }
+
         pub fn toMat3(self: @This()) Mat(T, 3, 3) {
             comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
 
@@ -720,6 +746,54 @@ test "vec_cross orthogonality" {
 
     try std.testing.expectApproxEqAbs(0, vec_dot(c, a), 1e-12);
     try std.testing.expectApproxEqAbs(0, vec_dot(c, b), 1e-12);
+}
+
+test "Quaternion mul" {
+    const a = Quaternion(f64).init(1, 2, 3, 4);
+    const b = Quaternion(f64).init(5, 6, 7, 8);
+    const product = a.mul(b);
+
+    try std.testing.expectApproxEqAbs(24, product.x, 1e-12);
+    try std.testing.expectApproxEqAbs(48, product.y, 1e-12);
+    try std.testing.expectApproxEqAbs(48, product.z, 1e-12);
+    try std.testing.expectApproxEqAbs(-6, product.w, 1e-12);
+}
+
+test "Quaternion mulAssign" {
+    var a = Quaternion(f64).init(1, 2, 3, 4);
+    const b = Quaternion(f64).init(5, 6, 7, 8);
+    a.mulAssign(b);
+
+    try std.testing.expectApproxEqAbs(24, a.x, 1e-12);
+    try std.testing.expectApproxEqAbs(48, a.y, 1e-12);
+    try std.testing.expectApproxEqAbs(48, a.z, 1e-12);
+    try std.testing.expectApproxEqAbs(-6, a.w, 1e-12);
+}
+
+test "Quaternion conjugate" {
+    const q = Quaternion(f64).init(1, -2, 3, 4);
+    const c = q.conjugate();
+
+    try std.testing.expectApproxEqAbs(-1, c.x, 1e-12);
+    try std.testing.expectApproxEqAbs(2, c.y, 1e-12);
+    try std.testing.expectApproxEqAbs(-3, c.z, 1e-12);
+    try std.testing.expectApproxEqAbs(4, c.w, 1e-12);
+
+    const norm_squared = q.mul(c);
+    try std.testing.expectApproxEqAbs(0, norm_squared.x, 1e-12);
+    try std.testing.expectApproxEqAbs(0, norm_squared.y, 1e-12);
+    try std.testing.expectApproxEqAbs(0, norm_squared.z, 1e-12);
+    try std.testing.expectApproxEqAbs(30, norm_squared.w, 1e-12);
+}
+
+test "Quaternion conjugateAssign" {
+    var q = Quaternion(f64).init(1, -2, 3, 4);
+    q.conjugateAssign();
+
+    try std.testing.expectApproxEqAbs(-1, q.x, 1e-12);
+    try std.testing.expectApproxEqAbs(2, q.y, 1e-12);
+    try std.testing.expectApproxEqAbs(-3, q.z, 1e-12);
+    try std.testing.expectApproxEqAbs(4, q.w, 1e-12);
 }
 
 test "Quaternion toMat3 z rotation" {
