@@ -100,6 +100,15 @@ pub fn Quaternion(comptime T: type) type {
             self.* = self.mul(rhs);
         }
 
+        pub fn rotateVector(self: @This(), v: @Vector(3, T)) @Vector(3, T) {
+            comptime assertFloat(T, "Quaternion vector rotation requires floating point element types");
+
+            const q = self.normalized();
+            const qv = @Vector(3, T){ q.x, q.y, q.z };
+            const t = vec_cross(qv, v) * @as(@Vector(3, T), @splat(@as(T, 2)));
+            return v + t * @as(@Vector(3, T), @splat(q.w)) + vec_cross(qv, t);
+        }
+
         pub fn toMat3(self: @This()) Mat(T, 3, 3) {
             comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
 
@@ -794,6 +803,31 @@ test "Quaternion conjugateAssign" {
     try std.testing.expectApproxEqAbs(2, q.y, 1e-12);
     try std.testing.expectApproxEqAbs(-3, q.z, 1e-12);
     try std.testing.expectApproxEqAbs(4, q.w, 1e-12);
+}
+
+test "Quaternion rotateVector z rotation" {
+    const half_sqrt = std.math.sqrt(@as(f64, 0.5));
+    const q = Quaternion(f64).init(0, 0, half_sqrt, half_sqrt);
+    const v = @Vector(3, f64){ 1, 0, 0 };
+    const rotated = q.rotateVector(v);
+
+    try std.testing.expectApproxEqAbs(0, rotated[0], 1e-12);
+    try std.testing.expectApproxEqAbs(1, rotated[1], 1e-12);
+    try std.testing.expectApproxEqAbs(0, rotated[2], 1e-12);
+}
+
+test "Quaternion rotateVector matches matrix" {
+    const q = Quaternion(f64).init(0.5, -0.5, 0.5, std.math.sqrt(@as(f64, 0.5))).normalized();
+    const v = @Vector(3, f64){ 2, -3, 4 };
+
+    const rotated = q.rotateVector(v);
+    const matrix = q.toMat3();
+    var expected = @as(@Vector(3, f64), @splat(0));
+    matrix.vec_mul(&v, &expected);
+
+    inline for (0..3) |idx| {
+        try std.testing.expectApproxEqAbs(expected[idx], rotated[idx], 1e-12);
+    }
 }
 
 test "Quaternion toMat3 z rotation" {
