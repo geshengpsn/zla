@@ -74,6 +74,19 @@ pub fn Quaternion(comptime T: type) type {
             };
         }
 
+        pub fn add(a: @This(), b: @This()) @This() {
+            return .{
+                .x = a.x + b.x,
+                .y = a.y + b.y,
+                .z = a.z + b.z,
+                .w = a.w + b.w,
+            };
+        }
+
+        pub fn addAssign(self: *@This(), rhs: @This()) void {
+            self.* = self.add(rhs);
+        }
+
         pub fn conjugate(self: @This()) @This() {
             return .{
                 .x = -self.x,
@@ -107,6 +120,20 @@ pub fn Quaternion(comptime T: type) type {
             const qv = @Vector(3, T){ q.x, q.y, q.z };
             const t = vec_cross(qv, v) * @as(@Vector(3, T), @splat(@as(T, 2)));
             return v + t * @as(@Vector(3, T), @splat(q.w)) + vec_cross(qv, t);
+        }
+
+        pub fn dot(self: @This(), omega: @Vector(3, T)) @This() {
+            comptime assertFloat(T, "Quaternion angular velocity derivative requires floating point element types");
+
+            const omega_quat = @This().init(omega[0], omega[1], omega[2], 0);
+            const derivative = self.mul(omega_quat);
+            const half: T = 0.5;
+            return .{
+                .x = derivative.x * half,
+                .y = derivative.y * half,
+                .z = derivative.z * half,
+                .w = derivative.w * half,
+            };
         }
 
         pub fn toMat3(self: @This()) Mat(T, 3, 3) {
@@ -757,6 +784,28 @@ test "vec_cross orthogonality" {
     try std.testing.expectApproxEqAbs(0, vec_dot(c, b), 1e-12);
 }
 
+test "Quaternion add" {
+    const a = Quaternion(f64).init(1, 2, 3, 4);
+    const b = Quaternion(f64).init(5, 6, 7, 8);
+    const sum = a.add(b);
+
+    try std.testing.expectApproxEqAbs(6, sum.x, 1e-12);
+    try std.testing.expectApproxEqAbs(8, sum.y, 1e-12);
+    try std.testing.expectApproxEqAbs(10, sum.z, 1e-12);
+    try std.testing.expectApproxEqAbs(12, sum.w, 1e-12);
+}
+
+test "Quaternion addAssign" {
+    var a = Quaternion(f64).init(1, 2, 3, 4);
+    const b = Quaternion(f64).init(5, 6, 7, 8);
+    a.addAssign(b);
+
+    try std.testing.expectApproxEqAbs(6, a.x, 1e-12);
+    try std.testing.expectApproxEqAbs(8, a.y, 1e-12);
+    try std.testing.expectApproxEqAbs(10, a.z, 1e-12);
+    try std.testing.expectApproxEqAbs(12, a.w, 1e-12);
+}
+
 test "Quaternion mul" {
     const a = Quaternion(f64).init(1, 2, 3, 4);
     const b = Quaternion(f64).init(5, 6, 7, 8);
@@ -828,6 +877,28 @@ test "Quaternion rotateVector matches matrix" {
     inline for (0..3) |idx| {
         try std.testing.expectApproxEqAbs(expected[idx], rotated[idx], 1e-12);
     }
+}
+
+test "Quaternion dot identity" {
+    const q = Quaternion(f64).identity();
+    const omega = @Vector(3, f64){ 2, -4, 6 };
+    const q_dot = q.dot(omega);
+
+    try std.testing.expectApproxEqAbs(1, q_dot.x, 1e-12);
+    try std.testing.expectApproxEqAbs(-2, q_dot.y, 1e-12);
+    try std.testing.expectApproxEqAbs(3, q_dot.z, 1e-12);
+    try std.testing.expectApproxEqAbs(0, q_dot.w, 1e-12);
+}
+
+test "Quaternion dot" {
+    const q = Quaternion(f64).init(1, 2, 3, 4);
+    const omega = @Vector(3, f64){ 5, 6, 7 };
+    const q_dot = q.dot(omega);
+
+    try std.testing.expectApproxEqAbs(8, q_dot.x, 1e-12);
+    try std.testing.expectApproxEqAbs(16, q_dot.y, 1e-12);
+    try std.testing.expectApproxEqAbs(12, q_dot.z, 1e-12);
+    try std.testing.expectApproxEqAbs(-19, q_dot.w, 1e-12);
 }
 
 test "Quaternion toMat3 z rotation" {
