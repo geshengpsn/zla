@@ -107,7 +107,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             b_dyn.data[0][0] = b.data[0][0] + nextPerturb(&state);
-            a.mat_mul(&b_dyn, &c);
+            a.matMulAssign(&b_dyn, &c);
             sink += c.data[0][0];
         }
 
@@ -127,7 +127,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             rhs[0] = rhs_base[0] + nextPerturb(&state);
-            a.vec_mul(&rhs, &out);
+            a.vecMulAssign(&rhs, &out);
             sink += out[0];
         }
 
@@ -148,7 +148,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         while (i < iters) : (i += 1) {
             lhs[0] = rhs_base[0] + nextPerturb(&state);
             rhs[0] += nextPerturb(&state);
-            sink += zla.vec_dot(lhs, rhs);
+            sink += zla.vecDot(lhs, rhs);
         }
 
         std.mem.doNotOptimizeAway(sink);
@@ -167,7 +167,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             matrix.data[0][0] = a.data[0][0] + nextPerturb(&state);
-            try matrix.mat_inv(&inv);
+            try matrix.inverseAssign(&inv);
             sink += inv.data[0][0];
         }
 
@@ -187,7 +187,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             rhs[0] = rhs_base[0] + nextPerturb(&state);
-            try a.solve_lu(&rhs, &x);
+            try a.solveLuAssign(&rhs, &x);
             sink += x[0];
         }
 
@@ -207,7 +207,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             rhs[0] = rhs_base[0] + nextPerturb(&state);
-            try spd.solve_ldlt(&rhs, &x);
+            try spd.solveLdltAssign(&rhs, &x);
             sink += x[0];
         }
 
@@ -227,7 +227,7 @@ fn benchSquare(comptime n: usize, allocator: std.mem.Allocator, io: Io) !void {
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             rhs[0] = rhs_base[0] + nextPerturb(&state);
-            try spd.solve_cholesky(&rhs, &x);
+            try spd.solveCholeskyAssign(&rhs, &x);
             sink += x[0];
         }
 
@@ -307,7 +307,7 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             vec[0] = vec_base[0] + nextPerturb(&state);
-            a.vec_mul(&vec, &out);
+            a.vecMulAssign(&vec, &out);
             sink += out[0];
         }
 
@@ -328,7 +328,7 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
         while (i < iters) : (i += 1) {
             lhs[0] = vec_base[0] + nextPerturb(&state);
             rhs[0] += nextPerturb(&state);
-            sink += zla.vec_dot(lhs, rhs);
+            sink += zla.vecDot(lhs, rhs);
         }
 
         std.mem.doNotOptimizeAway(sink);
@@ -347,7 +347,7 @@ fn benchVectorCase(comptime rows: usize, comptime cols: usize, allocator: std.me
         const start_ns = nowNs(io);
         while (i < iters) : (i += 1) {
             rhs_matrix.data[0][0] = vec_base[0] + nextPerturb(&state);
-            a.mat_mul(&rhs_matrix, &out_matrix);
+            a.matMulAssign(&rhs_matrix, &out_matrix);
             sink += out_matrix.data[0][0];
         }
 
@@ -502,7 +502,7 @@ fn benchCross3(io: Io) void {
     while (i < iters) : (i += 1) {
         a[0] += nextPerturb(&state);
         b[1] += nextPerturb(&state);
-        const c = zla.vec_cross(a, b);
+        const c = zla.vecCross(a, b);
         sink += c[2];
     }
 

@@ -22,14 +22,26 @@ fn assertFloat(comptime T: type, comptime message: []const u8) void {
     }
 }
 
-pub fn vec_dot(a: anytype, b: @TypeOf(a)) vectorChild(@TypeOf(a)) {
+pub fn vecDot(a: anytype, b: @TypeOf(a)) vectorChild(@TypeOf(a)) {
+    var out: vectorChild(@TypeOf(a)) = undefined;
+    vecDotAssign(a, b, &out);
+    return out;
+}
+
+pub fn vecDotAssign(a: anytype, b: @TypeOf(a), out: *vectorChild(@TypeOf(a))) void {
     comptime {
         _ = vectorLen(@TypeOf(a));
     }
-    return @reduce(.Add, a * b);
+    out.* = @reduce(.Add, a * b);
 }
 
-pub fn vec_cross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
+pub fn vecCross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
+    var out: @TypeOf(a) = undefined;
+    vecCrossAssign(a, b, &out);
+    return out;
+}
+
+pub fn vecCrossAssign(a: anytype, b: @TypeOf(a), out: *@TypeOf(a)) void {
     const Vec = @TypeOf(a);
 
     comptime {
@@ -38,11 +50,21 @@ pub fn vec_cross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
         }
     }
 
-    return @as(Vec, .{
+    out.* = @as(Vec, .{
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     });
+}
+
+pub fn vecScale(a: anytype, b: vectorChild(@TypeOf(a))) @TypeOf(a) {
+    var out: @TypeOf(a) = undefined;
+    vecScaleAssign(a, b, &out);
+    return out;
+}
+
+pub fn vecScaleAssign(a: anytype, b: vectorChild(@TypeOf(a)), out: *@TypeOf(a)) void {
+    out.* = @as(@TypeOf(a), @splat(b)) * a;
 }
 
 pub fn Quaternion(comptime T: type) type {
@@ -61,82 +83,108 @@ pub fn Quaternion(comptime T: type) type {
         }
 
         pub fn norm(self: @This()) T {
-            return std.math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w);
+            var out: T = undefined;
+            self.normAssign(&out);
+            return out;
+        }
+
+        pub fn normAssign(self: *const @This(), out: *T) void {
+            out.* = std.math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w);
         }
 
         pub fn normalized(self: @This()) @This() {
+            var out: @This() = undefined;
+            self.normalizedAssign(&out);
+            return out;
+        }
+
+        pub fn normalizedAssign(self: *const @This(), out: *@This()) void {
             const n = self.norm();
-            return .{
-                .x = self.x / n,
-                .y = self.y / n,
-                .z = self.z / n,
-                .w = self.w / n,
-            };
+            out.x = self.x / n;
+            out.y = self.y / n;
+            out.z = self.z / n;
+            out.w = self.w / n;
         }
 
         pub fn add(a: @This(), b: @This()) @This() {
-            return .{
-                .x = a.x + b.x,
-                .y = a.y + b.y,
-                .z = a.z + b.z,
-                .w = a.w + b.w,
-            };
+            var out: @This() = undefined;
+            a.addAssign(&b, &out);
+            return out;
         }
 
-        pub fn addAssign(self: *@This(), rhs: @This()) void {
-            self.* = self.add(rhs);
+        pub fn addAssign(a: *const @This(), b: *const @This(), out: *@This()) void {
+            out.x = a.x + b.x;
+            out.y = a.y + b.y;
+            out.z = a.z + b.z;
+            out.w = a.w + b.w;
         }
 
         pub fn conjugate(self: @This()) @This() {
-            return .{
-                .x = -self.x,
-                .y = -self.y,
-                .z = -self.z,
-                .w = self.w,
-            };
+            var out: @This() = undefined;
+            self.conjugateAssign(&out);
+            return out;
         }
 
-        pub fn conjugateAssign(self: *@This()) void {
-            self.* = self.conjugate();
+        pub fn conjugateAssign(self: *const @This(), out: *@This()) void {
+            out.x = -self.x;
+            out.y = -self.y;
+            out.z = -self.z;
+            out.w = self.w;
         }
 
         pub fn mul(a: @This(), b: @This()) @This() {
-            return .{
-                .x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-                .y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-                .z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-                .w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
-            };
+            var out: @This() = undefined;
+            a.mulAssign(&b, &out);
+            return out;
         }
 
-        pub fn mulAssign(self: *@This(), rhs: @This()) void {
-            self.* = self.mul(rhs);
+        pub fn mulAssign(self: *const @This(), rhs: *const @This(), out: *@This()) void {
+            const x = self.w * rhs.x + self.x * rhs.w + self.y * rhs.z - self.z * rhs.y;
+            const y = self.w * rhs.y - self.x * rhs.z + self.y * rhs.w + self.z * rhs.x;
+            const z = self.w * rhs.z + self.x * rhs.y - self.y * rhs.x + self.z * rhs.w;
+            const w = self.w * rhs.w - self.x * rhs.x - self.y * rhs.y - self.z * rhs.z;
+            out.* = .{ .x = x, .y = y, .z = z, .w = w };
         }
 
         pub fn rotateVector(self: @This(), v: @Vector(3, T)) @Vector(3, T) {
+            var out: @Vector(3, T) = undefined;
+            self.rotateVectorAssign(&v, &out);
+            return out;
+        }
+
+        pub fn rotateVectorAssign(self: *const @This(), v: *const @Vector(3, T), out: *@Vector(3, T)) void {
             comptime assertFloat(T, "Quaternion vector rotation requires floating point element types");
 
             const q = self.normalized();
             const qv = @Vector(3, T){ q.x, q.y, q.z };
-            const t = vec_cross(qv, v) * @as(@Vector(3, T), @splat(@as(T, 2)));
-            return v + t * @as(@Vector(3, T), @splat(q.w)) + vec_cross(qv, t);
+            const t = vecCross(qv, v.*) * @as(@Vector(3, T), @splat(@as(T, 2)));
+            out.* = v.* + t * @as(@Vector(3, T), @splat(q.w)) + vecCross(qv, t);
         }
 
         pub fn dot(self: @This(), omega: @Vector(3, T)) @This() {
+            var out: @This() = undefined;
+            self.dotAssign(&omega, &out);
+            return out;
+        }
+
+        pub fn dotAssign(self: *const @This(), omega: *const @Vector(3, T), out: *@This()) void {
             comptime assertFloat(T, "Quaternion angular velocity derivative requires floating point element types");
 
-            const omega_quat = @This().init(omega[0], omega[1], omega[2], 0);
-            const derivative = self.mul(omega_quat);
             const half: T = 0.5;
-            return .{
-                .x = derivative.x * half,
-                .y = derivative.y * half,
-                .z = derivative.z * half,
-                .w = derivative.w * half,
-            };
+            const x = (self.w * omega[0] + self.y * omega[2] - self.z * omega[1]) * half;
+            const y = (self.w * omega[1] - self.x * omega[2] + self.z * omega[0]) * half;
+            const z = (self.w * omega[2] + self.x * omega[1] - self.y * omega[0]) * half;
+            const w = -(self.x * omega[0] + self.y * omega[1] + self.z * omega[2]) * half;
+            out.* = .{ .x = x, .y = y, .z = z, .w = w };
         }
 
         pub fn toMat3(self: @This()) Mat(T, 3, 3) {
+            var out: Mat(T, 3, 3) = .{ .data = undefined };
+            self.toMat3Assign(&out);
+            return out;
+        }
+
+        pub fn toMat3Assign(self: *const @This(), out: *Mat(T, 3, 3)) void {
             comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
 
             const q = self.normalized();
@@ -152,14 +200,30 @@ pub fn Quaternion(comptime T: type) type {
             const wy = q.w * q.y;
             const wz = q.w * q.z;
 
-            return Mat(T, 3, 3).init(.{
-                1 - two * (yy + zz), two * (xy - wz),     two * (xz + wy),
-                two * (xy + wz),     1 - two * (xx + zz), two * (yz - wx),
-                two * (xz - wy),     two * (yz + wx),     1 - two * (xx + yy),
-            });
+            out.data[0] = .{
+                1 - two * (yy + zz),
+                two * (xy + wz),
+                two * (xz - wy),
+            };
+            out.data[1] = .{
+                two * (xy - wz),
+                1 - two * (xx + zz),
+                two * (yz + wx),
+            };
+            out.data[2] = .{
+                two * (xz + wy),
+                two * (yz - wx),
+                1 - two * (xx + yy),
+            };
         }
 
         pub fn fromMat3(matrix: *const Mat(T, 3, 3)) @This() {
+            var out: @This() = undefined;
+            fromMat3Assign(matrix, &out);
+            return out;
+        }
+
+        pub fn fromMat3Assign(matrix: *const Mat(T, 3, 3), out: *@This()) void {
             comptime assertFloat(T, "Quaternion matrix conversion requires floating point element types");
 
             const m00 = matrix.data[0][0];
@@ -173,11 +237,9 @@ pub fn Quaternion(comptime T: type) type {
             const m22 = matrix.data[2][2];
 
             const trace = m00 + m11 + m22;
-            var q: @This() = undefined;
-
             if (trace > 0) {
                 const s = std.math.sqrt(trace + 1) * 2;
-                q = .{
+                out.* = .{
                     .x = (m21 - m12) / s,
                     .y = (m02 - m20) / s,
                     .z = (m10 - m01) / s,
@@ -185,7 +247,7 @@ pub fn Quaternion(comptime T: type) type {
                 };
             } else if (m00 > m11 and m00 > m22) {
                 const s = std.math.sqrt(1 + m00 - m11 - m22) * 2;
-                q = .{
+                out.* = .{
                     .x = s / 4,
                     .y = (m01 + m10) / s,
                     .z = (m02 + m20) / s,
@@ -193,7 +255,7 @@ pub fn Quaternion(comptime T: type) type {
                 };
             } else if (m11 > m22) {
                 const s = std.math.sqrt(1 + m11 - m00 - m22) * 2;
-                q = .{
+                out.* = .{
                     .x = (m01 + m10) / s,
                     .y = s / 4,
                     .z = (m12 + m21) / s,
@@ -201,7 +263,7 @@ pub fn Quaternion(comptime T: type) type {
                 };
             } else {
                 const s = std.math.sqrt(1 + m22 - m00 - m11) * 2;
-                q = .{
+                out.* = .{
                     .x = (m02 + m20) / s,
                     .y = (m12 + m21) / s,
                     .z = s / 4,
@@ -209,7 +271,7 @@ pub fn Quaternion(comptime T: type) type {
                 };
             }
 
-            return q.normalized();
+            out.normalizedAssign(out);
         }
     };
 }
@@ -221,17 +283,19 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
         comptime cols: usize = cols,
 
         pub fn init(data: [cols * rows]T) @This() {
-            var self: @This() = .{
-                .data = undefined,
-            };
+            var out: @This() = .{ .data = undefined };
+            initAssign(&data, &out);
+            return out;
+        }
+
+        pub fn initAssign(data: *const [cols * rows]T, out: *@This()) void {
             inline for (0..cols) |j| {
                 var col: [rows]T = undefined;
                 inline for (0..rows) |i| {
                     col[i] = data[i * cols + j];
                 }
-                self.data[j] = @as(@Vector(rows, T), col);
+                out.data[j] = @as(@Vector(rows, T), col);
             }
-            return self;
         }
 
         pub fn format(
@@ -247,9 +311,12 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
         }
 
         pub fn transpose(self: *const @This()) Mat(T, cols, rows) {
-            var out: Mat(T, cols, rows) = .{
-                .data = undefined,
-            };
+            var out: Mat(T, cols, rows) = .{ .data = undefined };
+            self.transposeAssign(&out);
+            return out;
+        }
+
+        pub fn transposeAssign(self: *const @This(), out: *Mat(T, cols, rows)) void {
             inline for (0..rows) |out_col| {
                 var col: [cols]T = undefined;
                 inline for (0..cols) |out_row| {
@@ -257,7 +324,6 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
                 out.data[out_col] = @as(@Vector(cols, T), col);
             }
-            return out;
         }
 
         pub fn get(self: *const @This(), row: usize, col: usize) T {
@@ -271,7 +337,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             self.data[col] = @as(@Vector(rows, T), col_data);
         }
 
-        pub fn get_row(self: *const @This(), row: usize) @Vector(cols, T) {
+        pub fn getRow(self: *const @This(), row: usize) @Vector(cols, T) {
             var row_data: [cols]T = undefined;
             inline for (0..cols) |col| {
                 const col_data = @as([rows]T, self.data[col]);
@@ -280,7 +346,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return @as(@Vector(cols, T), row_data);
         }
 
-        pub fn set_row(self: *@This(), row: usize, value: @Vector(cols, T)) void {
+        pub fn setRow(self: *@This(), row: usize, value: @Vector(cols, T)) void {
             const row_data = @as([cols]T, value);
             inline for (0..cols) |col| {
                 var col_data = @as([rows]T, self.data[col]);
@@ -289,15 +355,15 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
         }
 
-        pub fn get_col(self: *const @This(), col: usize) @Vector(rows, T) {
+        pub fn getCol(self: *const @This(), col: usize) @Vector(rows, T) {
             return self.data[col];
         }
 
-        pub fn set_col(self: *@This(), col: usize, value: @Vector(rows, T)) void {
+        pub fn setCol(self: *@This(), col: usize, value: @Vector(rows, T)) void {
             self.data[col] = value;
         }
 
-        pub fn get_block(
+        pub fn getBlock(
             self: *const @This(),
             comptime block_rows: usize,
             comptime block_cols: usize,
@@ -323,7 +389,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return out;
         }
 
-        pub fn set_block(self: *@This(), start_row: usize, start_col: usize, block: anytype) void {
+        pub fn setBlock(self: *@This(), start_row: usize, start_col: usize, block: anytype) void {
             comptime {
                 if (block.*.rows > rows or block.*.cols > cols) {
                     @compileError("Block dimensions exceed matrix dimensions");
@@ -341,45 +407,57 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             }
         }
 
-        pub fn mat_add(a: *const @This(), b: *const @This(), c: *@This()) void {
+        pub fn matAdd(a: *const @This(), b: *const @This()) @This() {
+            var out: @This() = .{ .data = undefined };
+            a.matAddAssign(b, &out);
+            return out;
+        }
+
+        pub fn matAddAssign(a: *const @This(), b: *const @This(), out: *@This()) void {
             inline for (0..cols) |col| {
-                c.data[col] = a.data[col] + b.data[col];
+                out.data[col] = a.data[col] + b.data[col];
             }
         }
 
-        pub fn mat_add_assign(a: *@This(), b: *const @This()) void {
-            inline for (0..cols) |col| {
-                a.data[col] += b.data[col];
-            }
+        pub fn matNeg(a: *const @This()) @This() {
+            var out: @This() = .{ .data = undefined };
+            a.matNegAssign(&out);
+            return out;
         }
 
-        pub fn mat_neg(a: *const @This(), out: *@This()) void {
+        pub fn matNegAssign(a: *const @This(), out: *@This()) void {
             inline for (0..cols) |col| {
                 out.data[col] = -a.data[col];
             }
         }
 
-        pub fn mat_neg_assign(a: *@This()) void {
-            inline for (0..cols) |col| {
-                a.data[col] = -a.data[col];
-            }
+        pub fn matMul(a: *const @This(), b: anytype) Mat(T, rows, b.*.cols) {
+            var out: Mat(T, rows, b.*.cols) = .{ .data = undefined };
+            a.matMulAssign(b, &out);
+            return out;
         }
 
-        pub fn mat_mul(a: *const @This(), b: anytype, c: anytype) void {
+        pub fn matMulAssign(a: *const @This(), b: anytype, out: anytype) void {
             comptime {
                 if (b.*.rows != a.cols) {
                     @compileError("Matrix A and B dimensions do not match");
                 }
-                if (c.*.rows != a.rows or c.*.cols != b.*.cols) {
+                if (out.*.rows != a.rows or out.*.cols != b.*.cols) {
                     @compileError("Result matrix C dimensions do not match");
                 }
             }
             inline for (0..b.*.cols) |i| {
-                vec_mul(a, &b.*.data[i], &c.*.data[i]);
+                vecMulAssign(a, &b.*.data[i], &out.*.data[i]);
             }
         }
 
-        pub fn mat_inv(a: *const @This(), out: *@This()) !void {
+        pub fn inverse(self: *const @This()) !@This() {
+            var out: @This() = .{ .data = undefined };
+            try self.inverseAssign(&out);
+            return out;
+        }
+
+        pub fn inverseAssign(a: *const @This(), out: *@This()) !void {
             comptime {
                 if (rows != cols) {
                     @compileError("Matrix inversion requires square matrices");
@@ -390,16 +468,16 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
             }
 
-            var left = a.to_row_major();
-            var right = identity_row_major();
+            var left = a.toRowMajor();
+            var right = identityRowMajor();
             const eps = std.math.floatEps(T) * @as(T, 16);
 
             inline for (0..rows) |pivot_col| {
                 var pivot_row = pivot_col;
-                var pivot_abs = abs_value(left[pivot_row][pivot_col]);
+                var pivot_abs = absValue(left[pivot_row][pivot_col]);
 
                 inline for (pivot_col + 1..rows) |row| {
-                    const candidate = abs_value(left[row][pivot_col]);
+                    const candidate = absValue(left[row][pivot_col]);
                     if (candidate > pivot_abs) {
                         pivot_abs = candidate;
                         pivot_row = row;
@@ -424,7 +502,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 inline for (0..rows) |row| {
                     if (row != pivot_col) {
                         const factor = left[row][pivot_col];
-                        if (abs_value(factor) > eps) {
+                        if (absValue(factor) > eps) {
                             const factor_vec = @as(@Vector(cols, T), @splat(factor));
                             left[row] -= left[pivot_col] * factor_vec;
                             right[row] -= right[pivot_col] * factor_vec;
@@ -433,10 +511,16 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
             }
 
-            out.* = from_row_major(right);
+            out.* = fromRowMajor(right);
         }
 
-        pub fn solve_lu(a: *const @This(), b: *const @Vector(rows, T), x: *@Vector(rows, T)) !void {
+        pub fn solveLu(a: *const @This(), b: *const @Vector(rows, T)) !@Vector(rows, T) {
+            var out: @Vector(rows, T) = undefined;
+            try a.solveLuAssign(b, &out);
+            return out;
+        }
+
+        pub fn solveLuAssign(a: *const @This(), b: *const @Vector(rows, T), out: *@Vector(rows, T)) !void {
             comptime {
                 if (rows != cols) {
                     @compileError("LU solve requires square matrices");
@@ -447,7 +531,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
             }
 
-            var lu = a.to_row_major();
+            var lu = a.toRowMajor();
             var permutation: [rows]usize = undefined;
             inline for (0..rows) |i| {
                 permutation[i] = i;
@@ -457,10 +541,10 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
 
             inline for (0..rows) |pivot_col| {
                 var pivot_row = pivot_col;
-                var pivot_abs = abs_value(lu[pivot_row][pivot_col]);
+                var pivot_abs = absValue(lu[pivot_row][pivot_col]);
 
                 inline for (pivot_col + 1..rows) |row| {
-                    const candidate = abs_value(lu[row][pivot_col]);
+                    const candidate = absValue(lu[row][pivot_col]);
                     if (candidate > pivot_abs) {
                         pivot_abs = candidate;
                         pivot_row = row;
@@ -477,7 +561,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
 
                 const pivot = lu[pivot_col][pivot_col];
-                const tail = range_mask(pivot_col + 1, cols);
+                const tail = rangeMask(pivot_col + 1, cols);
                 inline for (pivot_col + 1..rows) |row| {
                     const factor = lu[row][pivot_col] / pivot;
                     const factor_vec = @as(@Vector(cols, T), @splat(factor));
@@ -496,7 +580,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
 
             var y = @as(@Vector(rows, T), @splat(0));
             inline for (0..rows) |row| {
-                const known = dot_range(lu[row], y, 0, row);
+                const known = dotRange(lu[row], y, 0, row);
                 y[row] = pb[row] - known;
             }
 
@@ -504,18 +588,24 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             inline for (0..rows) |idx| {
                 const row = rows - 1 - idx;
                 const diag = lu[row][row];
-                if (abs_value(diag) <= eps) {
+                if (absValue(diag) <= eps) {
                     return error.SingularMatrix;
                 }
 
-                const known = dot_range(lu[row], result, row + 1, cols);
+                const known = dotRange(lu[row], result, row + 1, cols);
                 result[row] = (y[row] - known) / diag;
             }
 
-            x.* = result;
+            out.* = result;
         }
 
-        pub fn solve_ldlt(a: *const @This(), b: *const @Vector(rows, T), x: *@Vector(rows, T)) !void {
+        pub fn solveLdlt(a: *const @This(), b: *const @Vector(rows, T)) !@Vector(rows, T) {
+            var out: @Vector(rows, T) = undefined;
+            try a.solveLdltAssign(b, &out);
+            return out;
+        }
+
+        pub fn solveLdltAssign(a: *const @This(), b: *const @Vector(rows, T), out: *@Vector(rows, T)) !void {
             comptime {
                 if (rows != cols) {
                     @compileError("LDLT solve requires square matrices");
@@ -543,7 +633,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                     diag -= l[col][idx] * l[col][idx] * d[idx];
                 }
 
-                if (abs_value(diag) <= eps) {
+                if (absValue(diag) <= eps) {
                     return error.SingularMatrix;
                 }
 
@@ -584,10 +674,16 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 result[row] = value;
             }
 
-            x.* = @as(@Vector(rows, T), result);
+            out.* = @as(@Vector(rows, T), result);
         }
 
-        pub fn solve_cholesky(a: *const @This(), b: *const @Vector(rows, T), x: *@Vector(rows, T)) !void {
+        pub fn solveCholesky(a: *const @This(), b: *const @Vector(rows, T)) !@Vector(rows, T) {
+            var out: @Vector(rows, T) = undefined;
+            try a.solveCholeskyAssign(b, &out);
+            return out;
+        }
+
+        pub fn solveCholeskyAssign(a: *const @This(), b: *const @Vector(rows, T), out: *@Vector(rows, T)) !void {
             comptime {
                 if (rows != cols) {
                     @compileError("Cholesky solve requires square matrices");
@@ -598,7 +694,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 }
             }
 
-            const matrix = a.to_row_major();
+            const matrix = a.toRowMajor();
             var l = std.mem.zeroes([rows]@Vector(cols, T));
 
             const eps = std.math.floatEps(T) * @as(T, 16);
@@ -607,7 +703,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 inline for (0..row + 1) |col| {
                     var sum = matrix[row][col];
                     if (col > 0) {
-                        sum -= dot_range(l[row], l[col], 0, col);
+                        sum -= dotRange(l[row], l[col], 0, col);
                     }
 
                     if (row == col) {
@@ -617,7 +713,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                         l[row][col] = std.math.sqrt(sum);
                     } else {
                         const diag = l[col][col];
-                        if (abs_value(diag) <= eps) {
+                        if (absValue(diag) <= eps) {
                             return error.NotPositiveDefinite;
                         }
                         l[row][col] = sum / diag;
@@ -628,38 +724,44 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             var y = @as(@Vector(rows, T), @splat(0));
             inline for (0..rows) |row| {
                 const diag = l[row][row];
-                if (abs_value(diag) <= eps) {
+                if (absValue(diag) <= eps) {
                     return error.NotPositiveDefinite;
                 }
 
-                const known = dot_range(l[row], y, 0, row);
+                const known = dotRange(l[row], y, 0, row);
                 y[row] = (b[row] - known) / diag;
             }
 
-            const lt = transpose_square_rows(l);
+            const lt = transposeSquareRows(l);
             var result = @as(@Vector(rows, T), @splat(0));
             inline for (0..rows) |idx| {
                 const row = rows - 1 - idx;
                 const diag = lt[row][row];
-                if (abs_value(diag) <= eps) {
+                if (absValue(diag) <= eps) {
                     return error.NotPositiveDefinite;
                 }
 
-                const known = dot_range(lt[row], result, row + 1, cols);
+                const known = dotRange(lt[row], result, row + 1, cols);
                 result[row] = (y[row] - known) / diag;
             }
 
-            x.* = result;
+            out.* = result;
         }
 
-        pub fn vec_mul(a: *const @This(), b: *const @Vector(a.cols, T), c: *@Vector(a.rows, T)) void {
-            c.* = @splat(0);
+        pub fn vecMul(a: *const @This(), b: *const @Vector(a.cols, T)) @Vector(a.rows, T) {
+            var out: @Vector(a.rows, T) = undefined;
+            a.vecMulAssign(b, &out);
+            return out;
+        }
+
+        pub fn vecMulAssign(a: *const @This(), b: *const @Vector(a.cols, T), out: *@Vector(a.rows, T)) void {
+            out.* = @splat(0);
             inline for (0..a.cols) |i| {
-                c.* += a.data[i] * @as(@Vector(a.rows, T), @splat(b[i]));
+                out.* += a.data[i] * @as(@Vector(a.rows, T), @splat(b[i]));
             }
         }
 
-        fn to_row_major(self: *const @This()) [rows]@Vector(cols, T) {
+        fn toRowMajor(self: *const @This()) [rows]@Vector(cols, T) {
             var matrix: [rows]@Vector(cols, T) = undefined;
             inline for (0..rows) |row| {
                 var row_data: [cols]T = undefined;
@@ -671,7 +773,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return matrix;
         }
 
-        fn from_row_major(matrix: [rows]@Vector(cols, T)) @This() {
+        fn fromRowMajor(matrix: [rows]@Vector(cols, T)) @This() {
             var self: @This() = .{
                 .data = undefined,
             };
@@ -685,7 +787,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return self;
         }
 
-        fn identity_row_major() [rows]@Vector(cols, T) {
+        fn identityRowMajor() [rows]@Vector(cols, T) {
             comptime {
                 if (rows != cols) {
                     @compileError("identity_row_major requires square matrices");
@@ -699,7 +801,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return matrix;
         }
 
-        fn transpose_square_rows(matrix: [rows]@Vector(cols, T)) [rows]@Vector(cols, T) {
+        fn transposeSquareRows(matrix: [rows]@Vector(cols, T)) [rows]@Vector(cols, T) {
             comptime {
                 if (rows != cols) {
                     @compileError("transpose_square_rows requires square matrices");
@@ -717,7 +819,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return transposed;
         }
 
-        fn dot_range(
+        fn dotRange(
             lhs: @Vector(cols, T),
             rhs: @Vector(cols, T),
             comptime start: usize,
@@ -733,13 +835,13 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
                 return @as(T, 0);
             }
 
-            const mask = range_mask(start, end);
+            const mask = rangeMask(start, end);
             const product = lhs * rhs;
             const zero = @as(@Vector(cols, T), @splat(@as(T, 0)));
             return @reduce(.Add, @select(T, mask, product, zero));
         }
 
-        fn range_mask(comptime start: usize, comptime end: usize) @Vector(cols, bool) {
+        fn rangeMask(comptime start: usize, comptime end: usize) @Vector(cols, bool) {
             comptime {
                 if (start > end or end > cols) {
                     @compileError("Invalid mask range");
@@ -753,7 +855,7 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
             return @as(@Vector(cols, bool), mask);
         }
 
-        fn abs_value(value: T) T {
+        fn absValue(value: T) T {
             return switch (@typeInfo(T)) {
                 .float => @abs(value),
                 else => unreachable,
@@ -765,23 +867,62 @@ pub fn Mat(comptime T: type, comptime rows: usize, comptime cols: usize) type {
 test "vec_dot" {
     const a = @Vector(4, f64){ 1, 2, 3, 4 };
     const b = @Vector(4, f64){ 5, 6, 7, 8 };
-    try std.testing.expectApproxEqAbs(70, vec_dot(a, b), 1e-12);
+    try std.testing.expectApproxEqAbs(70, vecDot(a, b), 1e-12);
+
+    var assigned: f64 = undefined;
+    vecDotAssign(a, b, &assigned);
+    try std.testing.expectApproxEqAbs(70, assigned, 1e-12);
 }
 
 test "vec_cross" {
     const x = @Vector(3, f64){ 1, 0, 0 };
     const y = @Vector(3, f64){ 0, 1, 0 };
-    const z = vec_cross(x, y);
+    const z = vecCross(x, y);
     try std.testing.expectEqual(@Vector(3, f64){ 0, 0, 1 }, z);
+
+    var assigned: @Vector(3, f64) = undefined;
+    vecCrossAssign(x, y, &assigned);
+    try std.testing.expectEqual(z, assigned);
 }
 
 test "vec_cross orthogonality" {
     const a = @Vector(3, f64){ 2, -1, 3 };
     const b = @Vector(3, f64){ -4, 5, 1 };
-    const c = vec_cross(a, b);
+    const c = vecCross(a, b);
 
-    try std.testing.expectApproxEqAbs(0, vec_dot(c, a), 1e-12);
-    try std.testing.expectApproxEqAbs(0, vec_dot(c, b), 1e-12);
+    try std.testing.expectApproxEqAbs(0, vecDot(c, a), 1e-12);
+    try std.testing.expectApproxEqAbs(0, vecDot(c, b), 1e-12);
+}
+
+test "vecScale" {
+    const v = @Vector(4, f64){ 1, -2, 3, -4 };
+    const scaled = vecScale(v, 0.5);
+
+    try std.testing.expectEqual(@Vector(4, f64){ 0.5, -1, 1.5, -2 }, scaled);
+
+    var assigned: @Vector(4, f64) = undefined;
+    vecScaleAssign(v, 0.5, &assigned);
+    try std.testing.expectEqual(scaled, assigned);
+}
+
+test "vecScale negative scalar" {
+    const v = @Vector(3, i32){ 2, -3, 4 };
+    const scaled = vecScale(v, -2);
+
+    try std.testing.expectEqual(@Vector(3, i32){ -4, 6, -8 }, scaled);
+}
+
+test "Quaternion norm Assign variants" {
+    const q = Quaternion(f64).init(1, 2, 2, 4);
+
+    var norm: f64 = undefined;
+    q.normAssign(&norm);
+    try std.testing.expectApproxEqAbs(q.norm(), norm, 1e-12);
+
+    var normalized: Quaternion(f64) = undefined;
+    q.normalizedAssign(&normalized);
+    const expected = q.normalized();
+    try std.testing.expectEqual(expected, normalized);
 }
 
 test "Quaternion add" {
@@ -796,14 +937,12 @@ test "Quaternion add" {
 }
 
 test "Quaternion addAssign" {
-    var a = Quaternion(f64).init(1, 2, 3, 4);
+    const a = Quaternion(f64).init(1, 2, 3, 4);
     const b = Quaternion(f64).init(5, 6, 7, 8);
-    a.addAssign(b);
+    var out: Quaternion(f64) = undefined;
+    a.addAssign(&b, &out);
 
-    try std.testing.expectApproxEqAbs(6, a.x, 1e-12);
-    try std.testing.expectApproxEqAbs(8, a.y, 1e-12);
-    try std.testing.expectApproxEqAbs(10, a.z, 1e-12);
-    try std.testing.expectApproxEqAbs(12, a.w, 1e-12);
+    try std.testing.expectEqual(a.add(b), out);
 }
 
 test "Quaternion mul" {
@@ -818,14 +957,12 @@ test "Quaternion mul" {
 }
 
 test "Quaternion mulAssign" {
-    var a = Quaternion(f64).init(1, 2, 3, 4);
+    const a = Quaternion(f64).init(1, 2, 3, 4);
     const b = Quaternion(f64).init(5, 6, 7, 8);
-    a.mulAssign(b);
+    var out: Quaternion(f64) = undefined;
+    a.mulAssign(&b, &out);
 
-    try std.testing.expectApproxEqAbs(24, a.x, 1e-12);
-    try std.testing.expectApproxEqAbs(48, a.y, 1e-12);
-    try std.testing.expectApproxEqAbs(48, a.z, 1e-12);
-    try std.testing.expectApproxEqAbs(-6, a.w, 1e-12);
+    try std.testing.expectEqual(a.mul(b), out);
 }
 
 test "Quaternion conjugate" {
@@ -845,13 +982,11 @@ test "Quaternion conjugate" {
 }
 
 test "Quaternion conjugateAssign" {
-    var q = Quaternion(f64).init(1, -2, 3, 4);
-    q.conjugateAssign();
+    const q = Quaternion(f64).init(1, -2, 3, 4);
+    var out: Quaternion(f64) = undefined;
+    q.conjugateAssign(&out);
 
-    try std.testing.expectApproxEqAbs(-1, q.x, 1e-12);
-    try std.testing.expectApproxEqAbs(2, q.y, 1e-12);
-    try std.testing.expectApproxEqAbs(-3, q.z, 1e-12);
-    try std.testing.expectApproxEqAbs(4, q.w, 1e-12);
+    try std.testing.expectEqual(q.conjugate(), out);
 }
 
 test "Quaternion rotateVector z rotation" {
@@ -863,6 +998,10 @@ test "Quaternion rotateVector z rotation" {
     try std.testing.expectApproxEqAbs(0, rotated[0], 1e-12);
     try std.testing.expectApproxEqAbs(1, rotated[1], 1e-12);
     try std.testing.expectApproxEqAbs(0, rotated[2], 1e-12);
+
+    var assigned: @Vector(3, f64) = undefined;
+    q.rotateVectorAssign(&v, &assigned);
+    try std.testing.expectEqual(rotated, assigned);
 }
 
 test "Quaternion rotateVector matches matrix" {
@@ -871,8 +1010,7 @@ test "Quaternion rotateVector matches matrix" {
 
     const rotated = q.rotateVector(v);
     const matrix = q.toMat3();
-    var expected = @as(@Vector(3, f64), @splat(0));
-    matrix.vec_mul(&v, &expected);
+    const expected = matrix.vecMul(&v);
 
     inline for (0..3) |idx| {
         try std.testing.expectApproxEqAbs(expected[idx], rotated[idx], 1e-12);
@@ -899,12 +1037,20 @@ test "Quaternion dot" {
     try std.testing.expectApproxEqAbs(16, q_dot.y, 1e-12);
     try std.testing.expectApproxEqAbs(12, q_dot.z, 1e-12);
     try std.testing.expectApproxEqAbs(-19, q_dot.w, 1e-12);
+
+    var assigned: Quaternion(f64) = undefined;
+    q.dotAssign(&omega, &assigned);
+    try std.testing.expectEqual(q_dot, assigned);
 }
 
 test "Quaternion toMat3 z rotation" {
     const half_sqrt = std.math.sqrt(@as(f64, 0.5));
     const q = Quaternion(f64).init(0, 0, half_sqrt, half_sqrt);
     const m = q.toMat3();
+
+    var assigned: Mat(f64, 3, 3) = undefined;
+    q.toMat3Assign(&assigned);
+    try std.testing.expectEqual(m, assigned);
 
     try std.testing.expectApproxEqAbs(0, m.data[0][0], 1e-12);
     try std.testing.expectApproxEqAbs(1, m.data[0][1], 1e-12);
@@ -926,6 +1072,10 @@ test "Quaternion fromMat3 round trip" {
     const round_tripped = Quaternion(f64).fromMat3(&matrix);
     const round_tripped_matrix = round_tripped.toMat3();
 
+    var assigned: Quaternion(f64) = undefined;
+    Quaternion(f64).fromMat3Assign(&matrix, &assigned);
+    try std.testing.expectEqual(round_tripped, assigned);
+
     inline for (0..3) |col| {
         inline for (0..3) |row| {
             try std.testing.expectApproxEqAbs(matrix.data[col][row], round_tripped_matrix.data[col][row], 1e-12);
@@ -934,13 +1084,18 @@ test "Quaternion fromMat3 round trip" {
 }
 
 test "Mat init" {
-    const a = Mat(f32, 2, 3).init(.{
+    const data = [_]f32{
         1, 2, 3,
         4, 5, 6,
-    });
+    };
+    const a = Mat(f32, 2, 3).init(data);
     try std.testing.expectEqual(a.data[0], @Vector(2, f32){ 1, 4 });
     try std.testing.expectEqual(a.data[1], @Vector(2, f32){ 2, 5 });
     try std.testing.expectEqual(a.data[2], @Vector(2, f32){ 3, 6 });
+
+    var assigned: Mat(f32, 2, 3) = undefined;
+    Mat(f32, 2, 3).initAssign(&data, &assigned);
+    try std.testing.expectEqual(a, assigned);
 }
 
 test "Mat format" {
@@ -968,14 +1123,32 @@ test "Mat mat_mul" {
         5, 6,
     });
 
-    var c = Mat(f32, 2, 2).init(.{ 0, 0, 0, 0 });
-    a.mat_mul(&b, &c);
+    const c = a.matMul(&b);
+
+    var assigned: Mat(f32, 2, 2) = undefined;
+    a.matMulAssign(&b, &assigned);
 
     const expected = Mat(f32, 2, 2).init(.{
         22, 28,
         49, 64,
     });
     try std.testing.expectEqual(c, expected);
+    try std.testing.expectEqual(c, assigned);
+}
+
+test "Mat vec_mul variants" {
+    const a = Mat(f64, 2, 3).init(.{
+        1, 2, 3,
+        4, 5, 6,
+    });
+    const b = @Vector(3, f64){ 7, 8, 9 };
+
+    const result = a.vecMul(&b);
+    var assigned: @Vector(2, f64) = undefined;
+    a.vecMulAssign(&b, &assigned);
+
+    try std.testing.expectEqual(@Vector(2, f64){ 50, 122 }, result);
+    try std.testing.expectEqual(result, assigned);
 }
 
 test "Mat mat_add" {
@@ -988,8 +1161,7 @@ test "Mat mat_add" {
         3, 2, 1,
     });
 
-    var c = Mat(f32, 2, 3).init(.{ 0, 0, 0, 0, 0, 0 });
-    a.mat_add(&b, &c);
+    const c = a.matAdd(&b);
 
     const expected = Mat(f32, 2, 3).init(.{
         7, 7, 7,
@@ -999,7 +1171,7 @@ test "Mat mat_add" {
 }
 
 test "Mat mat_add_assign" {
-    var a = Mat(f32, 2, 3).init(.{
+    const a = Mat(f32, 2, 3).init(.{
         1, 2, 3,
         4, 5, 6,
     });
@@ -1008,13 +1180,14 @@ test "Mat mat_add_assign" {
         3, 2, 1,
     });
 
-    a.mat_add_assign(&b);
+    var out: Mat(f32, 2, 3) = undefined;
+    a.matAddAssign(&b, &out);
 
     const expected = Mat(f32, 2, 3).init(.{
         7, 7, 7,
         7, 7, 7,
     });
-    try std.testing.expectEqual(expected, a);
+    try std.testing.expectEqual(expected, out);
 }
 
 test "Mat mat_neg" {
@@ -1023,8 +1196,7 @@ test "Mat mat_neg" {
         -4, 5,  -6,
     });
 
-    var out = Mat(f32, 2, 3).init(.{ 0, 0, 0, 0, 0, 0 });
-    a.mat_neg(&out);
+    const out = a.matNeg();
 
     const expected = Mat(f32, 2, 3).init(.{
         -1, 2,  -3,
@@ -1034,18 +1206,19 @@ test "Mat mat_neg" {
 }
 
 test "Mat mat_neg_assign" {
-    var a = Mat(f32, 2, 3).init(.{
+    const a = Mat(f32, 2, 3).init(.{
         1,  -2, 3,
         -4, 5,  -6,
     });
 
-    a.mat_neg_assign();
+    var out: Mat(f32, 2, 3) = undefined;
+    a.matNegAssign(&out);
 
     const expected = Mat(f32, 2, 3).init(.{
         -1, 2,  -3,
         4,  -5, 6,
     });
-    try std.testing.expectEqual(expected, a);
+    try std.testing.expectEqual(expected, out);
 }
 
 test "Mat transpose" {
@@ -1056,8 +1229,12 @@ test "Mat transpose" {
 
     const transposed = a.transpose();
 
+    var assigned: Mat(f32, 3, 2) = undefined;
+    a.transposeAssign(&assigned);
+
     try std.testing.expectEqual(@Vector(3, f32){ 1, 2, 3 }, transposed.data[0]);
     try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, transposed.data[1]);
+    try std.testing.expectEqual(transposed, assigned);
 }
 
 test "Mat get and set element" {
@@ -1079,10 +1256,10 @@ test "Mat get and set row" {
         4, 5, 6,
     });
 
-    try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, a.get_row(1));
+    try std.testing.expectEqual(@Vector(3, f32){ 4, 5, 6 }, a.getRow(1));
 
-    a.set_row(0, @Vector(3, f32){ 7, 8, 9 });
-    try std.testing.expectEqual(@Vector(3, f32){ 7, 8, 9 }, a.get_row(0));
+    a.setRow(0, @Vector(3, f32){ 7, 8, 9 });
+    try std.testing.expectEqual(@Vector(3, f32){ 7, 8, 9 }, a.getRow(0));
     try std.testing.expectEqual(@Vector(2, f32){ 7, 4 }, a.data[0]);
 }
 
@@ -1092,10 +1269,10 @@ test "Mat get and set col" {
         4, 5, 6,
     });
 
-    try std.testing.expectEqual(@Vector(2, f32){ 2, 5 }, a.get_col(1));
+    try std.testing.expectEqual(@Vector(2, f32){ 2, 5 }, a.getCol(1));
 
-    a.set_col(1, @Vector(2, f32){ 8, 9 });
-    try std.testing.expectEqual(@Vector(2, f32){ 8, 9 }, a.get_col(1));
+    a.setCol(1, @Vector(2, f32){ 8, 9 });
+    try std.testing.expectEqual(@Vector(2, f32){ 8, 9 }, a.getCol(1));
     try std.testing.expectEqual(@as(f32, 8), a.get(0, 1));
 }
 
@@ -1106,7 +1283,7 @@ test "Mat get and set block" {
         9, 10, 11, 12,
     });
 
-    const block = a.get_block(2, 2, 1, 1);
+    const block = a.getBlock(2, 2, 1, 1);
     const expected = Mat(f32, 2, 2).init(.{
         6,  7,
         10, 11,
@@ -1117,7 +1294,7 @@ test "Mat get and set block" {
         20, 21,
         22, 23,
     });
-    a.set_block(0, 2, &replacement);
+    a.setBlock(0, 2, &replacement);
 
     try std.testing.expectEqual(@as(f32, 20), a.get(0, 2));
     try std.testing.expectEqual(@as(f32, 21), a.get(0, 3));
@@ -1132,7 +1309,21 @@ test "Mat mat_inv" {
     });
 
     var inv = Mat(f64, 2, 2).init(.{ 0, 0, 0, 0 });
-    try a.mat_inv(&inv);
+    try a.inverseAssign(&inv);
+
+    try std.testing.expectApproxEqAbs(0.6, inv.data[0][0], 1e-10);
+    try std.testing.expectApproxEqAbs(-0.2, inv.data[0][1], 1e-10);
+    try std.testing.expectApproxEqAbs(-0.7, inv.data[1][0], 1e-10);
+    try std.testing.expectApproxEqAbs(0.4, inv.data[1][1], 1e-10);
+}
+
+test "Mat inverse" {
+    const a = Mat(f64, 2, 2).init(.{
+        4, 7,
+        2, 6,
+    });
+
+    const inv = try a.inverse();
 
     try std.testing.expectApproxEqAbs(0.6, inv.data[0][0], 1e-10);
     try std.testing.expectApproxEqAbs(-0.2, inv.data[0][1], 1e-10);
@@ -1148,10 +1339,9 @@ test "Mat mat_inv multiply identity" {
     });
 
     var inv = Mat(f64, 3, 3).init(.{ 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-    try a.mat_inv(&inv);
+    try a.inverseAssign(&inv);
 
-    var product = Mat(f64, 3, 3).init(.{ 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-    a.mat_mul(&inv, &product);
+    const product = a.matMul(&inv);
 
     const identity = Mat(f64, 3, 3).init(.{
         1, 0, 0,
@@ -1173,7 +1363,8 @@ test "Mat mat_inv singular" {
     });
 
     var inv = Mat(f64, 2, 2).init(.{ 0, 0, 0, 0 });
-    try std.testing.expectError(error.SingularMatrix, a.mat_inv(&inv));
+    try std.testing.expectError(error.SingularMatrix, a.inverseAssign(&inv));
+    try std.testing.expectError(error.SingularMatrix, a.inverse());
 }
 
 test "Mat solve_lu" {
@@ -1184,12 +1375,15 @@ test "Mat solve_lu" {
     });
     const b = @Vector(3, f64){ 1, -2, 0 };
 
-    var x = @as(@Vector(3, f64), @splat(0));
-    try a.solve_lu(&b, &x);
+    const x = try a.solveLu(&b);
+
+    var assigned: @Vector(3, f64) = undefined;
+    try a.solveLuAssign(&b, &assigned);
 
     const expected = @Vector(3, f64){ 1, -2, -2 };
     inline for (0..3) |i| {
         try std.testing.expectApproxEqAbs(expected[i], x[i], 1e-10);
+        try std.testing.expectApproxEqAbs(expected[i], assigned[i], 1e-10);
     }
 }
 
@@ -1200,8 +1394,9 @@ test "Mat solve_lu singular" {
     });
     const b = @Vector(2, f64){ 1, 2 };
 
-    var x = @as(@Vector(2, f64), @splat(0));
-    try std.testing.expectError(error.SingularMatrix, a.solve_lu(&b, &x));
+    var out: @Vector(2, f64) = undefined;
+    try std.testing.expectError(error.SingularMatrix, a.solveLuAssign(&b, &out));
+    try std.testing.expectError(error.SingularMatrix, a.solveLu(&b));
 }
 
 test "Mat solve_ldlt" {
@@ -1212,12 +1407,15 @@ test "Mat solve_ldlt" {
     });
     const b = @Vector(3, f64){ 9, 7, 7 };
 
-    var x = @as(@Vector(3, f64), @splat(0));
-    try a.solve_ldlt(&b, &x);
+    const x = try a.solveLdlt(&b);
+
+    var assigned: @Vector(3, f64) = undefined;
+    try a.solveLdltAssign(&b, &assigned);
 
     const expected = @Vector(3, f64){ 1, 2, 3 };
     inline for (0..3) |i| {
         try std.testing.expectApproxEqAbs(expected[i], x[i], 1e-10);
+        try std.testing.expectApproxEqAbs(expected[i], assigned[i], 1e-10);
     }
 }
 
@@ -1228,8 +1426,7 @@ test "Mat solve_ldlt indefinite" {
     });
     const b = @Vector(2, f64){ 5, -4 };
 
-    var x = @as(@Vector(2, f64), @splat(0));
-    try a.solve_ldlt(&b, &x);
+    const x = try a.solveLdlt(&b);
 
     const expected = @Vector(2, f64){ 1, 2 };
     inline for (0..2) |i| {
@@ -1244,8 +1441,9 @@ test "Mat solve_ldlt singular" {
     });
     const b = @Vector(2, f64){ 1, 1 };
 
-    var x = @as(@Vector(2, f64), @splat(0));
-    try std.testing.expectError(error.SingularMatrix, a.solve_ldlt(&b, &x));
+    var out: @Vector(2, f64) = undefined;
+    try std.testing.expectError(error.SingularMatrix, a.solveLdltAssign(&b, &out));
+    try std.testing.expectError(error.SingularMatrix, a.solveLdlt(&b));
 }
 
 test "Mat solve_cholesky" {
@@ -1256,12 +1454,15 @@ test "Mat solve_cholesky" {
     });
     const b = @Vector(3, f64){ 9, 7, 7 };
 
-    var x = @as(@Vector(3, f64), @splat(0));
-    try a.solve_cholesky(&b, &x);
+    const x = try a.solveCholesky(&b);
+
+    var assigned: @Vector(3, f64) = undefined;
+    try a.solveCholeskyAssign(&b, &assigned);
 
     const expected = @Vector(3, f64){ 1, 2, 3 };
     inline for (0..3) |i| {
         try std.testing.expectApproxEqAbs(expected[i], x[i], 1e-10);
+        try std.testing.expectApproxEqAbs(expected[i], assigned[i], 1e-10);
     }
 }
 
@@ -1272,6 +1473,7 @@ test "Mat solve_cholesky not positive definite" {
     });
     const b = @Vector(2, f64){ 1, 1 };
 
-    var x = @as(@Vector(2, f64), @splat(0));
-    try std.testing.expectError(error.NotPositiveDefinite, a.solve_cholesky(&b, &x));
+    var out: @Vector(2, f64) = undefined;
+    try std.testing.expectError(error.NotPositiveDefinite, a.solveCholeskyAssign(&b, &out));
+    try std.testing.expectError(error.NotPositiveDefinite, a.solveCholesky(&b));
 }
