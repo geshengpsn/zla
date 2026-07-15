@@ -35,26 +35,18 @@ pub fn vecDotAssign(a: anytype, b: @TypeOf(a), out: *vectorChild(@TypeOf(a))) vo
     out.* = @reduce(.Add, a * b);
 }
 
-pub fn vecCross(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
-    var out: @TypeOf(a) = undefined;
+pub fn vecCross(a: @Vector(3, f64), b: @Vector(3, f64)) @Vector(3, f64) {
+    var out: @Vector(3, f64) = undefined;
     vecCrossAssign(a, b, &out);
     return out;
 }
 
-pub fn vecCrossAssign(a: anytype, b: @TypeOf(a), out: *@TypeOf(a)) void {
-    const Vec = @TypeOf(a);
-
-    comptime {
-        if (vectorLen(Vec) != 3) {
-            @compileError("vec_cross expects @Vector(3, T) inputs");
-        }
-    }
-
-    out.* = @as(Vec, .{
+pub fn vecCrossAssign(a: @Vector(3, f64), b: @Vector(3, f64), out: *@Vector(3, f64)) void {
+    out.* = .{
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
-    });
+    };
 }
 
 pub fn vecScale(a: anytype, b: vectorChild(@TypeOf(a))) @TypeOf(a) {
